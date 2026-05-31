@@ -8,10 +8,22 @@ services:
     container_name: smartcity-care-agent
     ports:
       - "8501:8501"
+    env_file:
+      - .env
     environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_MODEL=${GEMINI_MODEL}
+      - DATABASE_PATH=/app/data/care_system.db
+      - MODEL_PATH=/app/models/attention_rnn.pt
       - PYTHONPATH=/app
     volumes:
-      # SQLite 데이터베이스 파일 영속 볼륨 마운트
-      - ./care_system.db:/app/care_system.db
+      # SQLite 데이터베이스 파일 영속 named volume 마운트
+      - care_data:/app/data
+      # 모델 파일은 이미지 내부에 COPY되어 있으나,
+      # 호스트의 실시간 모델 변경이 즉시 반영될 수 있도록 읽기 전용 bind mount 수행
+      - ./attention_rnn.pt:/app/models/attention_rnn.pt:ro
     restart: unless-stopped
+
+volumes:
+  care_data:
+    name: care_data

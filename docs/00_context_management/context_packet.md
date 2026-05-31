@@ -6,10 +6,10 @@
 
 ## 1. 현재 프로젝트 상태 마킹
 
-* **대단계**: Phase 7 - 破損ファイル復元および第1次動作検証の完了 (Verification & Recovery Complete)
-* **소단계**: 자동 복구를 통한 코드 정상화, JSON 직렬화 경고 해결 및 5대 검증 통과 (8/8 Passed)
-* **최종 업데이트 시점**: 2026-05-31T20:10:00+09:00
-* **상태 요약**: Google Drive 다운로드 오류로 인해 HTML 경고문으로 덮어씌워졌던 11개의 주요 Python 소스코드를 전면 복원 완료함. 로컬 가상환경(`.venv`)을 구성하여 의존성 라이브러리를 정상 설치하였으며, `pytest`를 통한 자동 검증 결과 8개 테스트 케이스가 100% 통과함. 모의 DB 시딩(`seed_data.py`)을 통해 5명의 시나리오별 데이터를 SQLite에 성공적으로 적재하고 Streamlit 대시보드(`localhost:8501`)의 실행 및 초기 연동 무결성을 확인 완료함. 이 과정에서 발견된 `float32` 타입의 JSON 직렬화 에러를 `db_connector.py` 내의 안전 변환 헬퍼(to_native_types) 구현을 통해 최종 해결함.
+* **대단계**: Phase 7 - API 비의존형 XAI Fallback 보고서 검증 완료 (XAI Validation Complete)
+* **소단계**: check_db.py PII 검출 오탐 수정 및 신규 자동화 테스트 완료 (10/10 Passed)
+* **최종 업데이트 시점**: 2026-05-31T22:20:00+09:00
+* **상태 요약**: 로컬 가상환경 BDD 테스트 8건 통과 및 attention_rnn.pt 실모델 추론 가동 환경 하에서 무과금 Fallback XAI 보고서 생성 안전성을 검증하였으며, `check_db.py` 의 성명 오탐 정규식('이탈', '이상' 등)을 문맥 키워드 지정 및 예외 사전 필터 구조로 수정하여 PII Leak Detection 0건을 달성함. 신규 BDD 단위 테스트(`test_pii_detection.py`) 2건을 추가하여 전체 자동화 테스트 통과 수를 10건으로 확대하였으며, Docker 환경 런타임 구동은 로컬 환경 제약상 미확인 상태로 유지함.
 
 ---
 
@@ -116,6 +116,6 @@ classDiagram
 
 ## 3. Next 마일스톤 (Next Milestones)
 
-* **차기 진행 예정 작업**: Phase 8 - Google GenAI / OpenAI API 키 연동 가이드 문서화 및 환경 정비
-  * **목표**: API 키 미설정 상태에서의 Fallback 작동 시나리오와 실측 API 연동 매뉴얼을 작성하여, 신규 개발자가 환경변수(`.env`) 설정을 원활히 마칠 수 있도록 가이드 문서 고도화.
-  * **주요 산출물**: API 키 연동 지침이 추가된 `README.md` 및 배포 인수 인계 보고서.
+* **차기 진행 예정 작업**: Phase 9 - Docker compose 런타임 영속성 및 권한 실측 검증
+  * **목표**: Docker Desktop 사용 가능 환경에서 컨테이너를 빌드 및 구동하여 Non-root `careuser` 계정 하에서의 SQLite 임시 저널 파일(-wal, -shm) 쓰기와 named volume 마운트 영속성을 최종 실증함.
+  * **주요 산출물**: Docker compose 런타임 영속성 및 권한 검증 결과 보고서.

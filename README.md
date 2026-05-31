@@ -65,7 +65,7 @@ python -m venv .venv
 ```bash
 .venv\Scripts\python.exe -c "import sys; sys.path.append('src'); from infrastructure.persistence.seed_data import seed_database; seed_database('care_system.db')"
 ```
-* **주의**: 현재 `numpy.float32` 타입 데이터가 SQLite 입력 시 JSON 직렬화 오류(TypeError)를 발생시키는 경고 로그가 확인되었으나, 데이터 적재 자체는 성공적으로 수행됩니다 (차기 개선 대상).
+* **해결 완료**: 이전 버전에서 발생하던 `numpy.float32` 타입 데이터의 SQLite 입력 시 JSON 직렬화 오류(TypeError) WARNING은 현재 해결되어 경고 로그 없이 데이터 적재가 성공적으로 수행됩니다.
 
 ### 3. 하네스 BDD 테스트 구동 (8개 테스트 100% 통과 완료)
 5대 검증 항목 및 전체 단위/결합 테스트를 실행합니다.
@@ -98,7 +98,11 @@ copy .env.example .env
 # 백그라운드로 대시보드 구동
 docker-compose up --build -d
 ```
-* `docker-compose.yml` 볼륨 정의에 따라, 컨테이너를 재시작해도 복지사가 저장한 피드백 메모 및 정오탐 SQL 상태가 로컬의 `care_system.db`에 영구 안전하게 동기화 보존됩니다.
+* **데이터베이스 영속성 (named volume)**: 
+  본 시스템의 SQLite 데이터베이스는 호스트의 bind mount 대신 Docker **named volume (`care_data`)**을 사용하여 관리됩니다.
+  * **Windows 환경 named volume 권장 이유**: Windows Docker Desktop(WSL2 백엔드)에서 NTFS 호스트 경로의 파일을 직접 컨테이너에 bind mount하는 경우, Non-root 사용자 권한 불일치로 인한 쓰기 권한 오류(Permission Denied) 및 SQLite 트랜잭션 도중 파일 잠금(Locking) 버그로 인한 `database is locked` 에러가 빈번하게 발생할 수 있습니다. 반면, named volume은 Linux 네이티브 파일 시스템(EXT4) 상에서 영속되기 때문에 POSIX 파일 잠금과 소유권 격리가 완벽히 보장되어 안정적으로 동작합니다.
+* **모델 파일 연동**:
+  빌드 시 `attention_rnn.pt` 실측 가중치가 이미지 내부에 COPY되며, `docker-compose.yml`에서 읽기 전용 bind mount(`:ro`)로 호스트와 연결되어 호스트 상의 모델 파일이 갱신되는 경우 즉시 적용됩니다.
 
 ---
 

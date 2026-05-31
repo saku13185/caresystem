@@ -28,12 +28,18 @@
 * **DATABASE_PATH**: SQLite 데이터베이스 파일명 (`care_system.db`)
 
 ### 2.2. 컨테이너 이미지 스펙 (`Dockerfile`)
-* **베이스**: `python:3.12-slim` (경량 오피셜 이미지)
-* **보안 통제**: 컨테이너 내부 침투 시 권한 탈취를 차단하는 **Non-root 전용 사용자 (`careuser`)** 환경 격리 구동.
-* **경로 보장**: `ENV PYTHONPATH=/app` 환경 변수를 주입하여 파이썬 패키지 의존성 탐색 오류 영구 예방.
+* **베이스**: `python:3.12-slim` (경량 공식 이미지)
+* **보안 및 디렉터리 격리**: 
+  - 컨테이너 내부에 `/app/data` 및 `/app/models` 디렉터리를 사전 생성하고 소유권을 **Non-root 사용자 (`careuser`)**에게 위임하여 격리 구동 보안을 달성함.
+  - 빌드 시점에 초기 `care_system.db` 및 `attention_rnn.pt`가 이미지 내의 각 안전 경로에 COPY 복사됨.
+* **경로 보장**: `ENV PYTHONPATH=/app` 환경 변수를 주입하여 패키지 탐색 문제 해결.
 
 ### 2.3. 서비스 오케스트레이션 (`docker-compose.yml`)
-* 포트 포워딩 `8501:8501` 적용 및 SQLite 파일 `./care_system.db`를 볼륨 마운트하여 컨테이너 셧다운 시에도 복지사의 정오탐 피드백 메모 데이터가 안전하게 보존되도록 보장.
+* **포트 포워딩**: `8501:8501` 매핑 적용.
+* **데이터베이스 영속성 (named volume)**: 
+  - Windows 호스트 상에서의 Non-root 사용자 권한 충돌 및 SQLite 트랜잭션 도크 락(`database is locked`) 문제를 방지하기 위해, SQLite DB는 호스트 bind mount 대신 Docker **named volume (`care_data:/app/data`)**을 사용하여 관리함.
+* **모델 파일 연동**:
+  - `attention_rnn.pt` 모델은 이미지 내에 복사 탑재되나, 호스트에서 재학습 완료된 가중치를 런타임에 동적으로 주입받아 자동 로딩할 수 있도록 읽기 전용 bind mount(`:ro`)를 함께 구성함.
 
 ---
 
@@ -68,16 +74,17 @@
 * 시스템은 비동기 스트리밍이 아닌 일일 자정 배치 처리를 기반으로 동작하므로, API 호출 속도 제한(Rate Limit)에 거의 영향을 받지 않습니다.
 
 ### 4.4. Known Non-Critical Issues (알려진 비임계 결함/현상)
-* **API_KEY_INVALID 경고 로그 출력**: `.env`에 유효하지 않은 API 키가 등록되어 있을 경우, 콘솔에 `[XAI_GENERATOR_ERROR] Google GenAI API Exception: ...` 로그가 출력되나, 이는 Fallback 안전장치가 정상 가동 중임을 의미하므로 서비스 운영 상 무해합니다.
+* **`[DOCKER-VERIFY-01]` Docker 런타임 실측 동작 미확인**: 현재 로컬 환경 상 Docker CLI 미지원으로 인해, Docker Compose named volume 기반 격리 권한 셋업(SQLite 임시 저널 파일의 쓰기 락 충돌 방지 동작)의 실제 런타임 실행 여부는 미확인(Unverified) 상태입니다. 단, 설정 파일의 정적 검토는 완수되었습니다.
+* **GEMINI_API_KEY 미설정 경고 로그**: API Key 미설정 시 콘솔에 `[XAI_GENERATOR_ERROR] Google GenAI API Exception` 경고가 출력될 수 있으나, 시스템은 즉시 안전하게 1단계 로컬 Fallback 보고서 모드로 자동 전환되므로 안심하고 운영 가능합니다.
 
 ### 4.5. Verification Checklist (운영 확인 체크리스트)
-- [ ] `.env` 파일에 유효한 `GEMINI_API_KEY`와 `GEMINI_MODEL=gemini-2.5-flash`가 기입되어 있는가?
-- [ ] 가상환경 `.venv`가 활성화되고 `pytest` 실행 시 8개 테스트 시나리오가 모두 성공하는가?
-- [ ] 시드 데이터 생성 명령어 실행 후 `caregiver_alerts` 및 `anomaly_reports` 테이블에 분석 결과가 누락 없이 기입되는가?
+- [ ] `.env` 파일에 API Key가 공백 상태일 때도 XAI 보고서가 로컬 Fallback 모드로 오류 없이 출력되는가?
+- [ ] 가상환경 `.venv`가 활성화되고 `python -m pytest` 실행 시 10개 테스트 시나리오가 모두 성공하는가?
+- [ ] `check_db.py` 실행 시 `Disclaimer Pass Rate: 5/5`, `PII Leak Detections: 0`, `Prohibited Word Matches: 0`을 모두 만족하는가?
 
 ### 4.6. Next Maintainer Notes (차기 유지보수자 인수인계 가이드)
-* 실제 유효한 API Key를 적용하여 실측 테스트를 진행하려면, 발급된 키를 `.env`에 배치한 후 `.venv/Scripts/python.exe`로 `seed_database()`를 실행하여 생성 과정을 계측하십시오.
-* XAI 보고서의 어조를 바꾸거나 요약 스타일을 수정하려면 [xai_report_generator.py:L79-93](file:///c:/Users/Gram%20Pro360/.gemini/antigravity-ide/scratch/care_system/src/infrastructure/llm/xai_report_generator.py#L79-93) 내의 System Prompt 영역을 안전하게 수정하되, 아래의 윤리적 가이드라인 제약 조건을 절대 침범하지 않도록 주의하십시오.
+* API Key가 없는 무과금 상태에서 XAI 보고서를 수정하거나 룰 기반 내용을 확장하려면 [xai_report_generator.py:L53-69](file:///c:/Users/Gram%20Pro360/.gemini/antigravity-ide/scratch/care_system/src/infrastructure/llm/xai_report_generator.py#L53-69) 내의 1단계 Fallback 가이드 텍스트 빌더 부분을 보수적으로 수정하십시오.
+* 실제 유효한 Gemini API Key를 주입하여 실측 테스트를 수행하려면, 키를 `.env`에 등록하고 `.venv/Scripts/python.exe -m src.infrastructure.persistence.seed_data`를 실행해 생성되는 XAI 보고서의 한글 자연어 품질을 모니터링하십시오.
 
 ### 4.7. 윤리적 및 임상적 제약 조건의 준수 (Ethical Disclaimer)
 * **임상 진단 단정 금지**: 보고서 텍스트에 "피돌봄 노인은 우울증 환자로 판단됩니다" 또는 "치매가 의심됩니다"와 같은 임상적 최종 진단성 문장을 포함시키는 것을 절대 금지합니다.
