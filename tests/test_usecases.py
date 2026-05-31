@@ -1,6 +1,7 @@
 import pytest
 from datetime import date
 from src.infrastructure.persistence.db_connector import DatabaseConnector
+from src.infrastructure.persistence.sqlite_care_repository import SQLiteCareRepository
 from src.usecases.preprocess_adl_data import PreprocessADLDataUseCase
 from src.usecases.run_anomaly_detection import RunAnomalyDetectionUseCase
 
@@ -11,7 +12,8 @@ def test_imputation_fallback_with_empty_database():
     Then: ValueError 예외가 즉각 발생하여 다운타임 없이 처리가 차단되는지 검증
     """
     db = DatabaseConnector("test_empty.db")
-    usecase = PreprocessADLDataUseCase(db)
+    repository = SQLiteCareRepository(db)
+    usecase = PreprocessADLDataUseCase(repository)
     
     # 윈도우 미달 시 ValueError 검증
     with pytest.raises(ValueError):
@@ -32,7 +34,9 @@ def test_anomaly_xai_fallback_integration():
     When: OpenAI API 통신 장애(mock_api_fail=True) 상황 하에서 LLM XAI 리포트 생성을 트리거 시
     Then: 의료 disclaimer 최상단 인쇄 및 주의보가 결합된 한국어 Fallback 리포트 출력 검증
     """
-    usecase = RunAnomalyDetectionUseCase(DatabaseConnector("care_system.db"))
+    db = DatabaseConnector("care_system.db")
+    repository = SQLiteCareRepository(db)
+    usecase = RunAnomalyDetectionUseCase(repository)
     
     anomaly_packet = {
         "resident_id": "test-uuid-9999",

@@ -25,9 +25,15 @@ class DatabaseConnector:
     """
     SQLite 데이터베이스 커넥터 및 DDL 실행 어댑터
     """
-    def __init__(self, db_path: str = "care_system.db"):
-        # SQLite 파일 저장 경로 설정
-        self.db_path = db_path
+    def __init__(self, db_path: Optional[str] = None):
+        # SQLite 파일 저장 경로 설정 (DATABASE_PATH 환경변수가 있으면 우선 사용)
+        self.db_path = db_path or os.environ.get("DATABASE_PATH", "care_system.db")
+        
+        # DB 파일의 부모 디렉터리가 존재하지 않는 경우 자동 생성
+        db_dir = os.path.dirname(self.db_path)
+        if db_dir and not os.path.exists(db_dir):
+            os.makedirs(db_dir, exist_ok=True)
+            
         # 데이터베이스 및 테이블 초기화 수행
         self.initialize_database()
 
@@ -206,3 +212,41 @@ class DatabaseConnector:
         with self.get_connection() as conn:
             conn.execute(query, (action_status, feedback_message, alert_id))
             conn.commit()
+
+    def get_adl_summaries_by_date_range(self, resident_id: str, start_date: date, end_date: date) -> List[Dict[str, Any]]:
+        """
+        특정 기간 동안의 일별 요약 데이터 리스트를 조회합니다.
+        """
+        query = """
+            SELECT date, activity_shares 
+            FROM daily_adl_summaries 
+            WHERE resident_id = ? AND date BETWEEN ? AND ?
+            ORDER BY date ASC;
+        """
+        with self.get_connection() as conn:
+            rows = conn.execute(query, (resident_id, str(start_date), str(end_date))).fetchall()
+            result = []
+            for row in rows:
+                item = dict(row)
+                item['activity_shares'] = json.loads(item['activity_shares'])
+                result.append(item)
+            return result
+
+    def get_adl_summaries_before_date(self, resident_id: str, before_date: date, limit: int) -> List[Dict[str, Any]]:
+        """
+        특정 일자 이전의 최근 N일치 일별 요약 데이터 리스트를 조회합니다.
+        """
+        query = """
+            SELECT activity_shares 
+            FROM daily_adl_summaries 
+            WHERE resident_id = ? AND date < ?
+            ORDER BY date DESC LIMIT ?;
+        """
+        with self.get_connection() as conn:
+            rows = conn.execute(query, (resident_id, str(before_date), limit)).fetchall()
+            result = []
+            for row in rows:
+                item = dict(row)
+                item['activity_shares'] = json.loads(item['activity_shares'])
+                result.append(item)
+            return result

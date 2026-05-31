@@ -3,7 +3,7 @@ import uuid
 import numpy as np
 from datetime import date, datetime
 from typing import Dict, Any, List, Optional, Tuple
-from src.infrastructure.persistence.db_connector import DatabaseConnector
+from src.usecases.ports.care_repository import CareRepositoryPort
 from src.usecases.preprocess_adl_data import PreprocessADLDataUseCase
 from src.infrastructure.models.attention_rnn import AttentionRNN
 from src.infrastructure.models.train_pipeline import ModelTrainer
@@ -15,10 +15,14 @@ class RunAnomalyDetectionUseCase:
     AttentionRNN 예측, Double-step 이상 탐지 스코어링 및
     LLM XAI 자연어 보고서 연계 생성을 통합 관장하는 배치 오케스트레이터 유스케이스
     """
-    def __init__(self, db_connector: Optional[DatabaseConnector] = None, model_path: str = "attention_rnn.pt"):
-        # 데이터베이스 커넥터 바인딩 (생략 시 기본 경로 초기화)
-        self.db = db_connector or DatabaseConnector()
-        self.model_path = model_path
+    def __init__(self, db_repository: CareRepositoryPort, model_path: Optional[str] = None):
+        # 데이터베이스 리포지토리 포트 바인딩
+        self.db = db_repository
+        self.model_path = model_path or os.environ.get("MODEL_PATH", "attention_rnn.pt")
+        
+        # 모델 파일 존재 유무 로그 출력
+        model_exists = os.path.exists(self.model_path)
+        print(f"[RunAnomalyDetectionUseCase] Resolved model path: {self.model_path} (Exists: {model_exists})")
         
         # 하위 서브 시스템 컴포넌트 초기화
         self.preprocessor = PreprocessADLDataUseCase(self.db)
@@ -130,18 +134,26 @@ class RunAnomalyDetectionUseCase:
 
     def _infer_with_model(self, x_window: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """
-        AttentionRNN 로컬 파일이 있을 시 PyTorch 추론을 작동시키며,
+        AttentionRNN 로컬 파일이 있을 시 PyTorch 추론을 작동시키며 (인메모리 캐시 경유),
         파일이 부재할 시 Mock 예측값을 노이즈 형태로 안전 복제 출력합니다. (안정 추론 가드)
         """
+        import torch
+        from src.infrastructure.models.model_cache import AttentionRNNModelCache
+
         if os.path.exists(self.model_path):
             try:
-                trainer = ModelTrainer(self.model_path)
-                trainer.load_model()
+                device = "cuda" if torch.cuda.is_available() else "cpu"
+                model = AttentionRNNModelCache.get_model(self.model_path, device)
+                
                 # (15, 41) 윈도우 인풋을 딥러닝 규격인 배치차원 추가 (1, 15, 41)로 매핑
                 x_input = np.expand_dims(x_window, axis=0)
-                pred, att = trainer.predict(x_input)
-                # 배치 차원을 제거하여 단일 벡터로 반환
-                return pred[0], att[0]
+                x_tensor = torch.tensor(x_input, dtype=torch.float32).to(device)
+                
+                with torch.no_grad():
+                    pred, att = model(x_tensor)
+                
+                # 배치 차원을 제거하여 넘파이 벡터로 변환
+                return pred[0].cpu().numpy(), att[0].cpu().numpy()
             except Exception as e:
                 print(f"[AttentionRNN_INFERENCE_WARNING] Fallback to Mock Prediction due to: {str(e)}")
                 

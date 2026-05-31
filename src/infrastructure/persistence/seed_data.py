@@ -1,8 +1,9 @@
+import os
 import uuid
 import random
 import json
 from datetime import date, timedelta, datetime
-from typing import Dict, List
+from typing import Dict, List, Optional
 from src.infrastructure.persistence.db_connector import DatabaseConnector
 
 # 41개 핵심 CASAS 일상생활 활동(ADL) 표준 레이블 정의
@@ -56,13 +57,14 @@ def generate_normalized_adl_shares() -> Dict[str, float]:
             
     return normalized_shares
 
-def seed_database(db_path: str = "care_system.db", force: bool = True) -> None:
+def seed_database(db_path: Optional[str] = None, force: bool = True) -> None:
     """
     초기 개발 및 데모 시연을 위한 모의 시드 데이터를 영속 테이블에 안전하게 주입합니다.
     force=True인 경우 기존 테이블 데이터를 모두 초기화하고 다양한 상태의 주민 5명을 적재합니다.
     수집된 ADL 시계열 데이터를 기반으로 AI 이상 감지 유스케이스를 실행하여 anomaly_reports 및 alerts를 기입합니다.
     """
-    db = DatabaseConnector(db_path)
+    resolved_path = db_path or os.environ.get("DATABASE_PATH", "care_system.db")
+    db = DatabaseConnector(resolved_path)
     
     # 0단계: 기존 데이터 초기화 및 강제 재적재 설정
     with db.get_connection() as conn:
@@ -164,8 +166,10 @@ def seed_database(db_path: str = "care_system.db", force: bool = True) -> None:
     # (하드코딩 기입을 전면 제거하고, 데이터베이스에서 실측 시계열을 직접 '읽어와서' 
     #  AttentionRNN 예측, Double-Step 판별 및 Gemini XAI 보고서 자동 작성을 완수합니다)
     from src.usecases.run_anomaly_detection import RunAnomalyDetectionUseCase
+    from src.infrastructure.persistence.sqlite_care_repository import SQLiteCareRepository
     
-    usecase = RunAnomalyDetectionUseCase(db)
+    repository = SQLiteCareRepository(db)
+    usecase = RunAnomalyDetectionUseCase(repository)
     print("\n[AI Anomaly Detection & XAI Pipeline Triggered]")
     print("-> 데이터베이스로부터 시계열을 '읽어와서' AI 분석 및 실증 보고서를 생성합니다.")
     

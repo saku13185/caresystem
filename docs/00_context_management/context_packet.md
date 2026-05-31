@@ -6,10 +6,10 @@
 
 ## 1. 현재 프로젝트 상태 마킹
 
-* **대단계**: Phase 7 - API 비의존형 XAI Fallback 보고서 검증 완료 (XAI Validation Complete)
-* **소단계**: check_db.py PII 검출 오탐 수정 및 신규 자동화 테스트 완료 (10/10 Passed)
-* **최종 업데이트 시점**: 2026-05-31T22:20:00+09:00
-* **상태 요약**: 로컬 가상환경 BDD 테스트 8건 통과 및 attention_rnn.pt 실모델 추론 가동 환경 하에서 무과금 Fallback XAI 보고서 생성 안전성을 검증하였으며, `check_db.py` 의 성명 오탐 정규식('이탈', '이상' 등)을 문맥 키워드 지정 및 예외 사전 필터 구조로 수정하여 PII Leak Detection 0건을 달성함. 신규 BDD 단위 테스트(`test_pii_detection.py`) 2건을 추가하여 전체 자동화 테스트 통과 수를 10건으로 확대하였으며, Docker 환경 런타임 구동은 로컬 환경 제약상 미확인 상태로 유지함.
+* **대단계**: Phase 11 - 유스케이스 계층 DIP 위반 보완 완료 (Usecases Layer DIP Compliance Complete)
+* **소단계**: [TECH-DEBT-03] 추상 포트 및 어댑터 기반 의존성 역전 구조 구현 (26/26 Passed)
+* **최종 업데이트 시점**: 2026-05-31T23:46:00+09:00
+* **상태 요약**: 유스케이스 레이어와 인프라 레이어 간의 강한 결합을 느슨하게 하기 위해 `CareRepositoryPort` Protocol(포트) 및 `SQLiteCareRepository`(어댑터)를 구현하고 생성자 주입을 적용하여 구체 `DatabaseConnector` 직접 임포트를 해제했습니다. 전처리기의 SQL 쿼리 로직을 인프라 레이어로 완전히 이관하였으며, AST 정적 분석 및 `FakeCareRepository` 격리 테스트를 포함하여 pytest 총 26건 전체가 100% 무경고 통과되었습니다.
 
 ---
 
@@ -116,6 +116,5 @@ classDiagram
 
 ## 3. Next 마일스톤 (Next Milestones)
 
-* **차기 진행 예정 작업**: Phase 9 - Docker compose 런타임 영속성 및 권한 실측 검증
-  * **목표**: Docker Desktop 사용 가능 환경에서 컨테이너를 빌드 및 구동하여 Non-root `careuser` 계정 하에서의 SQLite 임시 저널 파일(-wal, -shm) 쓰기와 named volume 마운트 영속성을 최종 실증함.
-  * **주요 산출물**: Docker compose 런타임 영속성 및 권한 검증 결과 보고서.
+* **차기 진행 예정 작업**: 없음 (프로젝트의 모든 주요 기술 부채 및 아키텍처 개선 과제 최종 종결)
+  * **목표**: 최종 정리 및 핸드오프 준비.

@@ -2,15 +2,15 @@ import numpy as np
 import json
 from typing import List, Dict, Any, Tuple
 from datetime import date, timedelta
-from src.infrastructure.persistence.db_connector import DatabaseConnector
+from src.usecases.ports.care_repository import CareRepositoryPort
 
 class PreprocessADLDataUseCase:
     """
     15일 슬라이딩 윈도우 시계열 데이터 가공 및 결측치 가중평균 보강(Imputation) 유스케이스
     """
-    def __init__(self, db_connector: DatabaseConnector):
-        # 영속성 저장소 조회를 위한 DB 커넥터 어댑터 바인딩
-        self.db = db_connector
+    def __init__(self, db_repository: CareRepositoryPort):
+        # 영속성 저장소 조회를 위한 DB 리포지토리 어댑터 바인딩
+        self.db = db_repository
         # 41개 핵심 CASAS 활동 표준 목록
         from src.infrastructure.persistence.seed_data import CASAS_41_ACTIVITIES
         self.activities = CASAS_41_ACTIVITIES
@@ -27,16 +27,11 @@ class PreprocessADLDataUseCase:
         dates_needed.reverse() # 시간 순서 정렬 (t-15일 ~ t일(당일))
 
         # 2. 데이터베이스에서 해당 일자의 ADL 요약 정보 로드
-        # SQLite 복합 인덱스 idx_adl_summary_resident_date 활용 고속 조회
-        query = """
-            SELECT date, activity_shares 
-            FROM daily_adl_summaries 
-            WHERE resident_id = ? AND date BETWEEN ? AND ?
-            ORDER BY date ASC;
-        """
-        with self.db.get_connection() as conn:
-            rows = conn.execute(query, (resident_id, str(dates_needed[0]), str(dates_needed[-1]))).fetchall()
-            db_data = {row['date']: json_to_dict(row['activity_shares']) for row in rows}
+        summaries = self.db.get_adl_summaries_by_date_range(resident_id, dates_needed[0], dates_needed[-1])
+        db_data = {
+            item['date']: (json_to_dict(item['activity_shares']) if isinstance(item['activity_shares'], str) else item['activity_shares'])
+            for item in summaries
+        }
 
         if len(db_data) == 0:
             raise ValueError(f"주민 ID {resident_id}에 대해 대상 기간 내 실측 데이터가 존재하지 않습니다.")
@@ -109,14 +104,7 @@ class PreprocessADLDataUseCase:
             return imputed_vector
 
         # 3일 연속 결측 발생 또는 극초반 데이터 결측 시 Fallback: 과거 15일 전체 정상 일자의 평균값 조회
-        query = """
-            SELECT activity_shares 
-            FROM daily_adl_summaries 
-            WHERE resident_id = ? AND date < ?
-            ORDER BY date DESC LIMIT 15;
-        """
-        with self.db.get_connection() as conn:
-            rows = conn.execute(query, (resident_id, str(target_date))).fetchall()
+        rows = self.db.get_adl_summaries_before_date(resident_id, target_date, 15)
             
         if not rows:
             # 과거 역사 데이터가 단 한 건도 없는 경우 균등 분배(Uniform Fallback)
@@ -126,7 +114,7 @@ class PreprocessADLDataUseCase:
         # 과거 정상일의 평균 벡터 계산
         vectors = []
         for row in rows:
-            shares = json_to_dict(row['activity_shares'])
+            shares = json_to_dict(row['activity_shares']) if isinstance(row['activity_shares'], str) else row['activity_shares']
             vectors.append(self._shares_to_vector(shares))
         
         mean_vector = np.mean(vectors, axis=0)
