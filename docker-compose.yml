@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  care-dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: smartcity-care-agent
+    ports:
+      - "8501:8501"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - PYTHONPATH=/app
+    volumes:
+      # SQLite 데이터베이스 파일 영속 볼륨 마운트
+      - ./care_system.db:/app/care_system.db
+    restart: unless-stopped
